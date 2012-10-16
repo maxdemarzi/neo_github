@@ -20,7 +20,7 @@ def create_graph
       end
     end
   end
-puts dates.inspect
+
   dates.each do |date|
     unless File.exist?("github/#{date.split("-")[0..-3].join("-")}.json.gz") 
       con = Faraday::Connection.new "http://data.githubarchive.org/#{date}.json.gz", :ssl => {:ca_file => "./cacert.pem"}
