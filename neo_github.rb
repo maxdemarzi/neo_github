@@ -10,8 +10,17 @@ require 'faraday'
 def create_graph
   users = Set.new
   vouches = Set.new
-
-  dates = ["2012-03-11-11", "2012-03-11-12"]
+  dates = []
+  (0..23).each do |h|
+    (1..31).each do |d|
+      if d < 10
+        dates << "2012-04-0#{d}-#{h}" 
+      else
+        dates << "2012-04-#{d}-#{h}" 
+      end
+    end
+  end
+puts dates.inspect
   dates.each do |date|
     unless File.exist?("github/#{date.split("-")[0..-3].join("-")}.json.gz") 
       con = Faraday::Connection.new "http://data.githubarchive.org/#{date}.json.gz", :ssl => {:ca_file => "./cacert.pem"}
@@ -19,8 +28,14 @@ def create_graph
       File.open("github/#{date.split("-")[0..-3].join("-")}/#{date}.json.gz", 'wb') { |fp| fp.write(con.get.body) }
     end
     gz = File.open("github/#{date.split("-")[0..-3].join("-")}/#{date}.json.gz", 'r')
-    js = Zlib::GzipReader.new(gz).read
-  
+
+    begin
+      js = Zlib::GzipReader.new(gz).read
+    rescue
+      # if nobody did anything that hour
+      next
+    end
+    
     Yajl::Parser.parse(js) do |event|
       case event["type"]
       when "CommitCommentEvent"
