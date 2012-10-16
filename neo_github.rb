@@ -12,7 +12,7 @@ def create_graph
   vouches = Set.new
   dates = []
   (0..23).each do |h|
-    (1..31).each do |d|
+    (1..1).each do |d|  #just one day for now
       if d < 10
         dates << "2012-04-0#{d}-#{h}" 
       else
@@ -20,8 +20,11 @@ def create_graph
       end
     end
   end
+  
+  #dates = ["2012-03-11-11", "2012-03-11-12"]
 
   dates.each do |date|
+    puts "Procesing #{date}"
     unless File.exist?("github/#{date.split("-")[0..-3].join("-")}.json.gz") 
       con = Faraday::Connection.new "http://data.githubarchive.org/#{date}.json.gz", :ssl => {:ca_file => "./cacert.pem"}
       FileUtils.mkdir("github/#{date.split("-")[0..-3].join("-")}") unless File.directory?("github/#{date.split("-")[0..-3].join("-")}")
@@ -138,8 +141,12 @@ class NeoGithub < Sinatra::Application
   def get_properties(node)
     properties = "<ul>"
     node.each_pair do |key, value|
+      if key == "avatar_url"
+        properties << "<li><img src='#{value}'></li>"
+      else
         properties << "<li><b>#{key}:</b> #{value}</li>"
       end
+    end
     properties + "</ul>"
   end
 
