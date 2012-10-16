@@ -48,13 +48,11 @@ def create_graph
           from = event["payload"]["pull_request"]["merged_by"]
           to   = event["payload"]["pull_request"]["user"]
         
-          users.add({:login      => from["login"], 
-                     :avatar_url => from["avatar_url"],
-                     :id         => from["id"]})
+          users.add({:name      => from["login"], 
+                     :avatar_url => from["avatar_url"]})
 
-          users.add({:login      => to["login"], 
-                     :avatar_url => to["avatar_url"],
-                     :id         => to["id"]})
+          users.add({:name      => to["login"], 
+                     :avatar_url => to["avatar_url"]})
 
           vouches.add({:from     => from["login"], 
                        :to       => to["login"],
@@ -74,21 +72,19 @@ def load_vouches(users, vouches)
   commands = []
   user_nodes = {}
   users.each_with_index do |user, index|
-    commands << [:create_node, {:login      => user[:login], 
-                                :avatar_url => user[:avatar_url],
-                                :id         => user[:id]}]
-    commands << [:add_node_to_index, "users_index", "login", user[:login], "{#{index * 2}}"]
+    commands << [:create_node, {:name      => user[:name], 
+                                :avatar_url => user[:avatar_url]}]
+    commands << [:add_node_to_index, "users_index", "name", user[:name], "{#{index * 2}}"]
   end
   
   batch_results = neo.batch *commands
-  puts batch_results.count
+
   batch_results.values_at(*batch_results.each_index.select(&:even?)).each do |result|
-    user_nodes[result["body"]["data"]["login"]] = result["body"]["self"].split('/').last
+    user_nodes[result["body"]["data"]["name"]] = result["body"]["self"].split('/').last
   end
   
   commands = []
   vouches.each do |vouch|
-    puts "from " + vouch[:from] + " to " + vouch[:to] + " type " + vouch[:type]
     commands << [:create_relationship, vouch[:type], user_nodes[vouch[:from]], user_nodes[vouch[:to]], nil] 
   end
   batch_results = neo.batch *commands
@@ -103,10 +99,6 @@ class NeoGithub < Sinatra::Application
       attributes = ""
       opts.each { |key,value| attributes << key.to_s << "=\"" << value << "\" "}
       "<a href=\"#{url}\" #{attributes}>#{text}</a>"
-    end
-
-    def neo
-      @neo = Neography::Rest.new
     end
   end
     
@@ -130,53 +122,58 @@ class NeoGithub < Sinatra::Application
 
   def get_properties(node)
     properties = "<ul>"
-    node["data"].each_pair do |key, value|
+    node.each_pair do |key, value|
         properties << "<li><b>#{key}:</b> #{value}</li>"
       end
     properties + "</ul>"
   end
 
   get '/resources/show' do
-      content_type :json
+    content_type :json
+    neo = Neography::Rest.new    
 
-      node = neo.get_node(params[:id]) 
-      connections = neo.traverse(node, "fullpath", neighbours)
-      incoming = Hash.new{|h, k| h[k] = []}
-      outgoing = Hash.new{|h, k| h[k] = []}
-      nodes = Hash.new
-      attributes = Array.new
+    cypher = "START me=node(#{params[:id]}) 
+              MATCH me <-[r?]- vouchers
+              RETURN me, r, vouchers"
 
-      connections.each do |c|
-         c["nodes"].each do |n|
-           nodes[n["self"]] = n["data"]
-         end
-         rel = c["relationships"][0]
-
-         if rel["end"] == node["self"]
-           incoming["Incoming:#{rel["type"]}"] << {:values => nodes[rel["start"]].merge({:id => node_id(rel["start"]) }) }
-         else
-           outgoing["Outgoing:#{rel["type"]}"] << {:values => nodes[rel["end"]].merge({:id => node_id(rel["end"]) }) }
-         end
+    connections = neo.execute_query(cypher)["data"]   
+ 
+    me = connections[0][0]["data"]
+    
+    vouches = []
+    if connections[0][1]
+      connections.group_by{|group| group[1]["type"]}.each do |key,values| 
+        vouches <<  {:id => key, 
+                     :name => key,
+                     :values => values.collect{|n| n[2]["data"].merge({:id => node_id(n[2]) }) } }
       end
+    end
 
-        incoming.merge(outgoing).each_pair do |key, value|
-          attributes << {:id => key.split(':').last, :name => key, :values => value.collect{|v| v[:values]} }
-        end
+     vouches = [{"name" => "No Relationships","name" => "No Relationships","values" => [{"id" => "#{params[:id]}","name" => "No Relationships "}]}] if vouches.empty?
 
-     attributes = [{"name" => "No Relationships","name" => "No Relationships","values" => [{"id" => "#{params[:id]}","name" => "No Relationships "}]}] if attributes.empty?
-
-      @node = {:details_html => "<h2>Neo ID: #{node_id(node)}</h2>\n<p class='summary'>\n#{get_properties(node)}</p>\n",
-                :data => {:attributes => attributes, 
-                          :name => node["data"]["name"],
-                          :id => node_id(node)}
+    @node = {:details_html => "<h2>Neo ID: #{params[:id]}</h2>\n<p class='summary'>\n#{get_properties(me)}</p>\n",
+                :data => {:attributes => vouches, 
+                          :name => me["name"],
+                          :id => params[:id]}
               }
 
       @node.to_json
+
 
     end
 
   get '/' do
     @neoid = params["neoid"]
     haml :index
+  end
+  
+  get '/best' do
+    neo = Neography::Rest.new
+    cypher = "START me=node(*) 
+              MATCH me <-[r?]- vouchers
+              RETURN ID(me), COUNT(r)
+              ORDER BY COUNT(r) DESC"
+
+    neo.execute_query(cypher)["data"].to_json
   end
 end
