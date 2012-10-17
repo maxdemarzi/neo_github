@@ -25,10 +25,15 @@ def create_graph
 
   dates.each do |date|
     puts "Procesing #{date}"
-    unless File.exist?("github/#{date.split("-")[0..-3].join("-")}.json.gz") 
-      con = Faraday::Connection.new "http://data.githubarchive.org/#{date}.json.gz", :ssl => {:ca_file => "./cacert.pem"}
+    path = "github/#{date.split("-")[0..-3].join("-")}/#{date}.json.gz"
+    unless File.exist?(path)
+      url = "http://data.githubarchive.org/#{date}.json.gz"
+      puts "#{path} not found, downloading file #{url}"
+
+      con = Faraday::Connection.new url, :ssl => {:ca_file => "./cacert.pem"}
       FileUtils.mkdir("github/#{date.split("-")[0..-3].join("-")}") unless File.directory?("github/#{date.split("-")[0..-3].join("-")}")
       File.open("github/#{date.split("-")[0..-3].join("-")}/#{date}.json.gz", 'wb') { |fp| fp.write(con.get.body) }
+      puts 'done!'
     end
     gz = File.open("github/#{date.split("-")[0..-3].join("-")}/#{date}.json.gz", 'r')
 
