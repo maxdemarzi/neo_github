@@ -21,7 +21,7 @@ def create_graph
     end
   end
   
-  #dates = ["2012-03-11-11", "2012-03-11-12"]
+  dates = ["2012-03-11-11", "2012-03-11-12"]
 
   dates.each do |date|
     puts "Procesing #{date}"
@@ -75,6 +75,10 @@ def create_graph
           vouches.add({:from     => from["login"], 
                        :to       => to["login"],
                        :type     => event["repository"]["language"]})
+          vouches.add({:from     => to["login"],
+                       :to       => from["login"], 
+                       :type     => event["repository"]["language"]})
+
         end
       end
     end
